@@ -95,6 +95,8 @@ export interface ReportListItem {
   purpose: string
   created_at: string
   report_data: any
+  risk_level?: string
+  overall_score?: number
 }
 
 export interface SystemStatistics {
@@ -187,6 +189,12 @@ export const creditRiskAPI = {
   // Cancel workflow
   cancelWorkflow: async (requestId: string): Promise<{ message: string }> => {
     const response = await api.post(`/workflow/${requestId}/cancel`)
+    return response.data
+  },
+
+  // Delete workflow execution
+  deleteWorkflow: async (requestId: string): Promise<any> => {
+    const response = await api.delete(`/workflow/${requestId}`)
     return response.data
   },
 

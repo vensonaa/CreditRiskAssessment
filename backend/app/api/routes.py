@@ -6,6 +6,9 @@ from app.services.data_service import DataService
 from typing import Dict, Any, List
 from datetime import datetime
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 workflow = SimpleReflectionWorkflow()
@@ -46,7 +49,7 @@ async def create_credit_risk_assessment(request: CreditRiskRequest):
         return response_data
         
     except Exception as e:
-        print(f"Error in create_credit_risk_assessment: {str(e)}")
+        logger.exception("Error in create_credit_risk_assessment")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/workflow/{request_id}", response_model=Dict[str, Any])
@@ -59,6 +62,25 @@ async def get_workflow_status(request_id: str):
         workflow_data = await data_service.get_workflow_execution(request_id)
         
         if not workflow_data:
+            # Fallback: if a report exists with this ID, synthesize a minimal completed workflow response
+            try:
+                report = await data_service.get_credit_risk_report(request_id)
+            except Exception:
+                report = None
+            
+            if report:
+                logger.debug("Workflow not found; returning synthesized completed workflow for existing report %s", request_id)
+                return {
+                    "request_id": request_id,
+                    "status": "completed",
+                    "iterations": 0,
+                    "total_duration": 0.0,
+                    "agent_responses": [],
+                    "final_report_id": request_id,
+                    "created_at": datetime.now().isoformat(),
+                    "completed_at": datetime.now().isoformat(),
+                }
+            
             raise HTTPException(status_code=404, detail="Workflow not found")
         
         return workflow_data
@@ -157,21 +179,32 @@ async def get_system_statistics():
     Get system statistics and metrics
     """
     try:
-        # Return hardcoded values for testing
-        return {
-            "total_reports": 9,
-            "total_workflows": 31,
-            "completed_workflows": 4,
-            "error_workflows": 24,
-            "success_rate": 12.9,
-            "average_iterations": 1.58,
-            "average_duration_seconds": 34.82
+        # Calculate real statistics from database
+        total_reports = await data_service.get_total_reports()
+        total_workflows = await data_service.get_total_workflows()
+        completed_workflows = await data_service.get_completed_workflows()
+        error_workflows = await data_service.get_error_workflows()
+        avg_iterations = await data_service.get_average_iterations()
+        avg_duration = await data_service.get_average_duration()
+        
+        # Calculate success rate
+        success_rate = 0.0
+        if total_workflows > 0:
+            success_rate = (completed_workflows / total_workflows) * 100
+        
+        result = {
+            "total_reports": total_reports,
+            "total_workflows": total_workflows,
+            "completed_workflows": completed_workflows,
+            "error_workflows": error_workflows,
+            "success_rate": round(success_rate, 1),
+            "average_iterations": round(avg_iterations, 1),
+            "average_duration_seconds": round(avg_duration, 2)
         }
+        return result
         
     except Exception as e:
-        print(f"Error in get_system_statistics: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Error in get_system_statistics")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve statistics: {str(e)}")
 
 @router.get("/submitted-applications", response_model=List[Dict[str, Any]])
@@ -228,6 +261,27 @@ async def cancel_workflow(request_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to cancel workflow: {str(e)}")
+
+@router.delete("/workflow/{request_id}")
+async def delete_workflow(request_id: str):
+    """
+    Delete a workflow execution and its associated report
+    """
+    try:
+        success = await data_service.delete_workflow_execution(request_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        return {
+            "message": "Workflow and associated report deleted successfully",
+            "request_id": request_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete workflow: {str(e)}")
 
 @router.get("/health")
 async def health_check():

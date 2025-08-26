@@ -96,6 +96,9 @@ export default function Reports() {
                       Requested Amount
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Risk Level
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Purpose
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -126,6 +129,17 @@ export default function Reports() {
                         ${report.requested_amount.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          report.report_data?.risk_level === 'Low' 
+                            ? 'text-green-600 bg-green-50' 
+                            : report.report_data?.risk_level === 'High'
+                            ? 'text-red-600 bg-red-50'
+                            : 'text-yellow-600 bg-yellow-50'
+                        }`}>
+                          {report.report_data?.risk_level || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {report.purpose}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -142,8 +156,9 @@ export default function Reports() {
                           </Link>
                           <button
                             onClick={() => setShowDeleteConfirm(report.report_id)}
-                            className="text-red-600 hover:text-red-900 flex items-center space-x-1"
+                            className="text-red-600 hover:text-red-900 hover:bg-red-50 px-2 py-1 rounded-md transition-colors duration-200 flex items-center space-x-1"
                             disabled={deleteReportMutation.isPending}
+                            title="Delete this report"
                           >
                             <Trash2 className="h-4 w-4" />
                             <span>Delete</span>

@@ -86,11 +86,25 @@ export default function WorkflowStatus() {
   })
 
   // Fetch the actual credit risk report when workflow is completed
-  const { data: creditReport, isLoading: reportLoading } = useQuery({
+  const { data: creditReport, isLoading: reportLoading, error: reportError } = useQuery({
     queryKey: ['credit-report', workflow?.final_report_id],
     queryFn: () => creditRiskAPI.getReport(workflow!.final_report_id!),
     enabled: !!workflow?.final_report_id && workflow.status === 'completed',
   })
+
+  // Debug logging for credit report query
+  useEffect(() => {
+    if (workflow) {
+      console.log('Credit report query debug:', {
+        workflowStatus: workflow.status,
+        finalReportId: workflow.final_report_id,
+        queryEnabled: !!workflow?.final_report_id && workflow.status === 'completed',
+        creditReport: creditReport,
+        reportLoading: reportLoading,
+        reportError: reportError
+      })
+    }
+  }, [workflow, creditReport, reportLoading, reportError])
 
   // Delete report mutation
   const deleteReportMutation = useMutation({
@@ -335,6 +349,23 @@ export default function WorkflowStatus() {
               <p>Should Show Delete: {workflow.status === 'completed' && workflow.final_report_id ? 'Yes' : 'No'}</p>
               <p>Delete Mutation Pending: {deleteReportMutation.isPending ? 'Yes' : 'No'}</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Debug Section - Remove this in production */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="text-lg font-semibold text-gray-900">Debug Information</h2>
+        </div>
+        <div className="card-content">
+          <div className="text-sm text-gray-600 space-y-1">
+            <div>Workflow Status: <span className="font-mono">{workflow.status}</span></div>
+            <div>Final Report ID: <span className="font-mono">{workflow.final_report_id || 'None'}</span></div>
+            <div>Credit Report Loading: <span className="font-mono">{reportLoading ? 'Yes' : 'No'}</span></div>
+            <div>Credit Report Error: <span className="font-mono">{reportError ? 'Yes' : 'No'}</span></div>
+            <div>Credit Report Data: <span className="font-mono">{creditReport ? 'Available' : 'None'}</span></div>
+            <div>Should Show Summary: <span className="font-mono">{workflow.status === 'completed' && creditReport ? 'Yes' : 'No'}</span></div>
           </div>
         </div>
       </div>

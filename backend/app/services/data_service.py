@@ -1,10 +1,13 @@
 from typing import Dict, Any, List, Optional
-from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, Text, JSON
+from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, Text, JSON, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from app.core.config import settings
 from datetime import datetime
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -140,7 +143,7 @@ class DataService:
             session.close()
     
     async def delete_credit_risk_report(self, report_id: str) -> bool:
-        """Delete credit risk report by ID"""
+        """Delete credit risk report by ID and associated workflow execution"""
         session = self.get_session()
         try:
             report = session.query(CreditRiskReport).filter(CreditRiskReport.id == report_id).first()
@@ -148,22 +151,25 @@ class DataService:
             if not report:
                 return False
             
-            # Also update any workflow executions that reference this report
+            # Find and delete any workflow executions that reference this report
             workflows = session.query(WorkflowExecution).filter(
                 WorkflowExecution.final_report_id == report_id
             ).all()
             
             for workflow in workflows:
-                workflow.final_report_id = None
+                logger.debug(f"Deleting workflow execution {workflow.request_id} associated with report {report_id}")
+                session.delete(workflow)
             
             # Delete the report
             session.delete(report)
             session.commit()
+            
+            logger.info(f"Deleted report {report_id} and {len(workflows)} associated workflow(s)")
             return True
             
         except Exception as e:
             session.rollback()
-            print(f"Error deleting report {report_id}: {str(e)}")
+            logger.exception(f"Error deleting report {report_id}")
             return False
         finally:
             session.close()
@@ -276,31 +282,31 @@ class DataService:
         """Get system statistics"""
         session = self.get_session()
         try:
-            print("Starting statistics calculation...")
+            logger.debug("Starting statistics calculation...")
             
             # Get basic counts
             total_reports = session.query(CreditRiskReport).count()
-            print(f"Total reports: {total_reports}")
+            logger.debug(f"Total reports: {total_reports}")
             
             total_workflows = session.query(WorkflowExecution).count()
-            print(f"Total workflows: {total_workflows}")
+            logger.debug(f"Total workflows: {total_workflows}")
             
             # Get completed workflows count
             completed_workflows = session.query(WorkflowExecution).filter(
                 WorkflowExecution.status.in_(["completed", "completed_with_fallback"])
             ).count()
-            print(f"Completed workflows: {completed_workflows}")
+            logger.debug(f"Completed workflows: {completed_workflows}")
             
             # Get error workflows count
             error_workflows = session.query(WorkflowExecution).filter(
                 WorkflowExecution.status.in_(["workflow_error", "generator_error", "reflection_error", "refiner_error"])
             ).count()
-            print(f"Error workflows: {error_workflows}")
+            logger.debug(f"Error workflows: {error_workflows}")
             
             # Calculate averages manually to avoid SQLAlchemy issues
-            print("Fetching all workflows for average calculation...")
+            logger.debug("Fetching all workflows for average calculation...")
             all_workflows = session.query(WorkflowExecution).all()
-            print(f"Fetched {len(all_workflows)} workflows")
+            logger.debug(f"Fetched {len(all_workflows)} workflows")
             
             total_iterations = sum(w.iterations for w in all_workflows)
             total_duration = sum(w.total_duration for w in all_workflows)
@@ -320,13 +326,11 @@ class DataService:
                 "average_duration_seconds": round(avg_duration, 2)
             }
             
-            print(f"Statistics calculation completed: {result}")
+            logger.debug(f"Statistics calculation completed: {result}")
             return result
             
         except Exception as e:
-            print(f"Error in get_statistics: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error in get_statistics")
             # Return default values if there's an error
             return {
                 "total_reports": 0,
@@ -337,5 +341,93 @@ class DataService:
                 "average_iterations": 0.0,
                 "average_duration_seconds": 0.0
             }
+        finally:
+            session.close()
+
+    async def get_average_duration(self) -> float:
+        """Get average workflow duration in seconds"""
+        session = self.get_session()
+        try:
+            result = session.query(func.avg(WorkflowExecution.total_duration)).scalar()
+            return float(result) if result is not None else 0.0
+        finally:
+            session.close()
+
+    async def get_total_reports(self) -> int:
+        """Get total number of credit risk reports"""
+        session = self.get_session()
+        try:
+            return session.query(CreditRiskReport).count()
+        finally:
+            session.close()
+
+    async def get_total_workflows(self) -> int:
+        """Get total number of workflow executions"""
+        session = self.get_session()
+        try:
+            return session.query(WorkflowExecution).count()
+        finally:
+            session.close()
+
+    async def get_completed_workflows(self) -> int:
+        """Get number of completed workflows"""
+        session = self.get_session()
+        try:
+            return session.query(WorkflowExecution).filter(
+                WorkflowExecution.status == 'completed'
+            ).count()
+        finally:
+            session.close()
+
+    async def get_error_workflows(self) -> int:
+        """Get number of workflows with errors"""
+        session = self.get_session()
+        try:
+            return session.query(WorkflowExecution).filter(
+                WorkflowExecution.status.in_(['error', 'workflow_error', 'generator_error', 'reflection_error', 'refiner_error'])
+            ).count()
+        finally:
+            session.close()
+
+    async def get_average_iterations(self) -> float:
+        """Get average number of iterations per workflow"""
+        session = self.get_session()
+        try:
+            result = session.query(func.avg(WorkflowExecution.iterations)).scalar()
+            return float(result) if result is not None else 0.0
+        finally:
+            session.close()
+
+    async def delete_workflow_execution(self, request_id: str) -> bool:
+        """Delete workflow execution by request ID"""
+        session = self.get_session()
+        try:
+            execution = session.query(WorkflowExecution).filter(
+                WorkflowExecution.request_id == request_id
+            ).first()
+            
+            if not execution:
+                return False
+            
+            # If there's an associated report, delete it too
+            if execution.final_report_id:
+                report = session.query(CreditRiskReport).filter(
+                    CreditRiskReport.id == execution.final_report_id
+                ).first()
+                if report:
+                    print(f"Deleting associated report {execution.final_report_id} for workflow {request_id}")
+                    session.delete(report)
+            
+            # Delete the workflow execution
+            session.delete(execution)
+            session.commit()
+            
+            print(f"Successfully deleted workflow execution {request_id}")
+            return True
+            
+        except Exception as e:
+            session.rollback()
+            print(f"Error deleting workflow execution {request_id}: {str(e)}")
+            return False
         finally:
             session.close()

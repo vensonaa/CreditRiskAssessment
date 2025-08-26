@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import React, { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { creditRiskAPI } from '../services/api'
 import { 
@@ -9,10 +10,15 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Activity
+  Activity,
+  Trash2
 } from 'lucide-react'
+import { toast } from 'react-hot-toast'
 
 export default function Dashboard() {
+  const queryClient = useQueryClient()
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+
   const { data: statistics, isLoading: statsLoading } = useQuery({
     queryKey: ['statistics'],
     queryFn: creditRiskAPI.getStatistics,
@@ -22,6 +28,25 @@ export default function Dashboard() {
     queryKey: ['recent-workflows'],
     queryFn: () => creditRiskAPI.getRecentWorkflows(5),
   })
+
+  // Delete workflow mutation
+  const deleteWorkflowMutation = useMutation({
+    mutationFn: (requestId: string) => creditRiskAPI.deleteWorkflow(requestId),
+    onSuccess: (data) => {
+      toast.success('Workflow deleted successfully')
+      queryClient.invalidateQueries({ queryKey: ['recent-workflows'] })
+      queryClient.invalidateQueries({ queryKey: ['statistics'] })
+      setShowDeleteConfirm(null)
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to delete workflow')
+      setShowDeleteConfirm(null)
+    }
+  })
+
+  const handleDeleteWorkflow = (requestId: string) => {
+    deleteWorkflowMutation.mutate(requestId)
+  }
 
   const quickActions = [
     {
@@ -210,6 +235,9 @@ export default function Dashboard() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Created
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -240,6 +268,16 @@ export default function Dashboard() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(workflow.created_at).toLocaleDateString()}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button
+                          onClick={() => setShowDeleteConfirm(workflow.request_id)}
+                          className="text-red-600 hover:text-red-900 hover:bg-red-50 px-2 py-1 rounded-md transition-colors duration-200"
+                          disabled={deleteWorkflowMutation.isPending}
+                          title="Delete this workflow"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -265,6 +303,47 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="flex-shrink-0">
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Delete Workflow</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone.</p>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-sm text-gray-700">
+                Are you sure you want to delete this workflow execution? 
+                This will permanently remove the workflow and its associated report.
+              </p>
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="btn btn-secondary btn-sm"
+                disabled={deleteWorkflowMutation.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteWorkflow(showDeleteConfirm)}
+                className="btn btn-danger btn-sm"
+                disabled={deleteWorkflowMutation.isPending}
+              >
+                {deleteWorkflowMutation.isPending ? 'Deleting...' : 'Delete Workflow'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
