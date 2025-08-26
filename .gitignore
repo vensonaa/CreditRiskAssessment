@@ -1,0 +1,10 @@
+backend/.env
+/backend/app/agents/__pycache__
+/backend/app/services/__pycache__
+/backend/__pycache__
+/backend/venv
+/frontend/node_modules
+/backend/app/api/__pycache__
+/backend/app/core/__pycache__
+/backend/app/workflows/__pycache__
+/backend/app/models/__pycache__
