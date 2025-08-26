@@ -193,8 +193,9 @@ class SimpleReflectionWorkflow:
                     return self._serialize_workflow_response(response)
                 
                 # Exit if we've reached max iterations or if score is stable and reasonable
-                if iteration >= max_iterations or (iteration >= 3 and quality_score >= stable_threshold):
-                    print(f"Workflow completed: {'Max iterations reached' if iteration >= max_iterations else 'Quality score stable and acceptable'}")
+                # Only allow early exit if score is actually improving or very close to threshold
+                if iteration >= max_iterations or (iteration >= 3 and quality_score >= quality_threshold * 0.95):
+                    print(f"Workflow completed: {'Max iterations reached' if iteration >= max_iterations else 'Quality score close to threshold'}")
                     final_report = current_report
                     if hasattr(final_report, 'model_dump'):
                         final_report = final_report.model_dump(mode='json')
@@ -204,7 +205,7 @@ class SimpleReflectionWorkflow:
                     
                     response = WorkflowResponse(
                         request_id=request_id,
-                        status="completed" if quality_score >= stable_threshold else "max_iterations_reached",
+                        status="completed" if quality_score >= quality_threshold * 0.95 else "max_iterations_reached",
                         final_report=final_report,
                         iterations=iteration,
                         total_duration=(datetime.now() - start_time).total_seconds(),
@@ -262,7 +263,13 @@ class SimpleReflectionWorkflow:
                 # Convert datetime objects in refined_report
                 if isinstance(refined_report, dict):
                     refined_report = convert_datetime_in_dict(refined_report)
+                
+                # IMPORTANT: Update the current_report with the refined content
                 current_report = refined_report
+                print(f"Refined report sections: {len(refined_report.get('sections', []))}")
+                if refined_report.get('sections'):
+                    print(f"First refined section title: {refined_report['sections'][0].get('title', 'Unknown')}")
+                    print(f"First refined section content length: {len(refined_report['sections'][0].get('content', ''))}")
             
             # Max iterations reached
             # Ensure final_report is a dictionary

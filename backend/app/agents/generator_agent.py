@@ -15,14 +15,16 @@ class GeneratorAgent(BaseAgent):
         self.data_service = DataService()
     
     def get_system_prompt(self) -> str:
-        return """You are a Generator Agent specialized in credit risk assessment. Your responsibilities include:
+        return """You are a Generator Agent specialized in credit risk assessment. Produce executive-ready, user-friendly content that is:
 
-1. Understanding user intent and creating execution plans
-2. Querying and retrieving relevant data using available tools
-3. Generating comprehensive credit risk assessment reports
-4. Supporting credit risk assessment, tool inquiries, greetings, and unsupported task detection
+STYLE GUIDELINES
+- Concise, clear, and free of repetition
+- Actionable and decision-oriented for credit committees
+- Skimmable: use short paragraphs, bullets, and ordered lists where helpful
+- Quantify statements with concrete figures where possible
+- Avoid generic filler text and excessive hedging
 
-When generating credit risk assessment reports, include the following sections:
+REQUIRED SECTIONS (when generating a full report)
 - Executive Summary
 - Customer Profile Analysis
 - Financial Analysis
@@ -31,9 +33,14 @@ When generating credit risk assessment reports, include the following sections:
 - Industry and Market Analysis
 - Collateral Assessment (if applicable)
 - Risk Rating and Recommendations
-- Terms and Conditions
 
-Be thorough, professional, and ensure all sections are well-structured and informative."""
+OUTPUT RULES
+- Start each section with a one-sentence takeaway
+- Use compact bullet points for details (no more than 5 per list)
+- Avoid repeating the same facts across sections
+- Prefer simple language over jargon
+- Do not include boilerplate like "this report provides"; focus on the substance
+"""
 
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -242,15 +249,23 @@ Be thorough, professional, and ensure all sections are well-structured and infor
     async def _generate_executive_summary(self, input_data: Dict[str, Any], additional_data: Dict[str, Any]) -> str:
         """Generate executive summary section"""
         prompt = f"""
-        Generate an executive summary for a credit risk assessment report.
-        
-        Customer: {input_data['customer_name']}
-        Business: {input_data['business_type']}
-        Revenue: ${input_data['annual_revenue']:,.2f}
-        Requested Amount: ${input_data['requested_amount']:,.2f}
-        Purpose: {input_data['purpose']}
-        
-        Provide a concise overview of the assessment, key findings, and initial risk assessment.
+        Write an executive-ready summary for a credit committee.
+
+        Context
+        - Customer: {input_data['customer_name']}
+        - Business type: {input_data['business_type']}
+        - Annual revenue: ${input_data['annual_revenue']:,.2f}
+        - Requested amount: ${input_data['requested_amount']:,.2f}
+        - Purpose: {input_data['purpose']}
+
+        Output format (strict):
+        1) One-sentence takeaway capturing the overall risk and outlook.
+        2) Key metrics (3-5 bullets): revenue, leverage/coverage if applicable, credit score or history signal, cash flow capacity vs request.
+        3) Strengths (2-4 bullets) avoiding generic statements; be specific.
+        4) Risks/Mitigants (2-4 bullets) with crisp, non-redundant phrasing.
+        5) Preliminary decision guidance (1-2 sentences) referencing risk rating and any conditions (e.g., covenants, collateral, monitoring).
+
+        Rules: avoid boilerplate and repetition; keep it concise and skimmable.
         """
         
         messages = [
@@ -263,14 +278,18 @@ Be thorough, professional, and ensure all sections are well-structured and infor
     async def _generate_customer_profile(self, input_data: Dict[str, Any]) -> str:
         """Generate customer profile analysis"""
         prompt = f"""
-        Analyze the customer profile for credit risk assessment.
-        
-        Customer: {input_data['customer_name']}
-        Business Type: {input_data['business_type']}
-        Annual Revenue: ${input_data['annual_revenue']:,.2f}
-        Credit History: {input_data['credit_history_years']} years
-        
-        Provide detailed analysis of the customer's business profile, market position, and stability.
+        Customer Profile Analysis (concise, skimmable):
+        - Customer: {input_data['customer_name']}
+        - Business type: {input_data['business_type']}
+        - Annual revenue: ${input_data['annual_revenue']:,.2f}
+        - Credit history: {input_data['credit_history_years']} years
+
+        Provide:
+        - Business model and revenue drivers (1-2 sentences)
+        - Customer concentration or diversification (bullets)
+        - Management/operating track record highlights (bullets)
+        - Any notable recent changes/events (bullets)
+        Avoid repeating executive summary content.
         """
         
         messages = [
@@ -283,13 +302,16 @@ Be thorough, professional, and ensure all sections are well-structured and infor
     async def _generate_financial_analysis(self, input_data: Dict[str, Any]) -> str:
         """Generate financial analysis section"""
         prompt = f"""
-        Conduct financial analysis for credit risk assessment.
-        
-        Annual Revenue: ${input_data['annual_revenue']:,.2f}
-        Requested Amount: ${input_data['requested_amount']:,.2f}
-        Credit History: {input_data['credit_history_years']} years
-        
-        Analyze financial ratios, cash flow considerations, debt capacity, and financial stability.
+        Financial Analysis (crisp, quantitative when possible):
+        - Annual revenue: ${input_data['annual_revenue']:,.2f}
+        - Requested amount: ${input_data['requested_amount']:,.2f}
+
+        Include:
+        - Profitability and margin signal (1-2 sentences)
+        - Cash flow coverage of requested debt (bullets with simple math if feasible)
+        - Leverage/solvency indicators (bullets; keep to top 2-3)
+        - Working capital/liquidity notes (bullets)
+        Keep it short; avoid boilerplate.
         """
         
         messages = [
@@ -302,12 +324,14 @@ Be thorough, professional, and ensure all sections are well-structured and infor
     async def _generate_credit_history(self, input_data: Dict[str, Any]) -> str:
         """Generate credit history assessment"""
         prompt = f"""
-        Assess credit history for risk evaluation.
-        
-        Credit History Years: {input_data['credit_history_years']}
-        Customer: {input_data['customer_name']}
-        
-        Evaluate credit history length, payment patterns, and creditworthiness indicators.
+        Credit History Assessment (brief):
+        - Customer: {input_data['customer_name']}
+        - Credit history: {input_data['credit_history_years']} years
+
+        Provide:
+        - Payment behavior summary (bullets)
+        - Any delinquencies/defaults/derogatories (bullets or "none")
+        - Trend/trajectory if known (1 sentence)
         """
         
         messages = [
@@ -320,13 +344,12 @@ Be thorough, professional, and ensure all sections are well-structured and infor
     async def _generate_risk_factors(self, input_data: Dict[str, Any], additional_data: Dict[str, Any]) -> str:
         """Generate risk factors analysis"""
         prompt = f"""
-        Identify and analyze risk factors for this credit application.
-        
-        Business Type: {input_data['business_type']}
-        Requested Amount: ${input_data['requested_amount']:,.2f}
-        Purpose: {input_data['purpose']}
-        
-        Consider industry risks, market risks, financial risks, and operational risks.
+        Risk Factors Analysis (prioritized, avoid redundancy):
+        - Business type: {input_data['business_type']}
+        - Requested amount: ${input_data['requested_amount']:,.2f}
+        - Purpose: {input_data['purpose']}
+
+        Provide 3-6 bullets covering the most material risks across industry, market, financial, and operational categories. Keep each bullet to a single, clear sentence. Where relevant, add one-word mitigants in parentheses.
         """
         
         messages = [
@@ -339,11 +362,14 @@ Be thorough, professional, and ensure all sections are well-structured and infor
     async def _generate_industry_analysis(self, input_data: Dict[str, Any], additional_data: Dict[str, Any]) -> str:
         """Generate industry and market analysis"""
         prompt = f"""
-        Provide industry and market analysis for credit risk assessment.
-        
-        Business Type: {input_data['business_type']}
-        
-        Analyze industry trends, market conditions, competitive landscape, and regulatory environment.
+        Industry and Market Analysis (short, decision-useful):
+        - Business type: {input_data['business_type']}
+
+        Include:
+        - Demand/trend snapshot (1-2 sentences)
+        - Competitive intensity and positioning (bullets)
+        - Regulatory/technology shifts if material (bullets)
+        Keep it focused on what affects credit risk.
         """
         
         messages = [
@@ -356,13 +382,15 @@ Be thorough, professional, and ensure all sections are well-structured and infor
     async def _generate_recommendations_section(self, input_data: Dict[str, Any], additional_data: Dict[str, Any]) -> str:
         """Generate recommendations section"""
         prompt = f"""
-        Provide comprehensive recommendations for this credit application.
-        
-        Customer: {input_data['customer_name']}
-        Requested Amount: ${input_data['requested_amount']:,.2f}
-        Purpose: {input_data['purpose']}
-        
-        Include credit terms, conditions, monitoring requirements, and risk mitigation strategies.
+        Risk Rating and Recommendations (concise):
+        - Customer: {input_data['customer_name']}
+        - Requested amount: ${input_data['requested_amount']:,.2f}
+        - Purpose: {input_data['purpose']}
+
+        Output:
+        - Risk rating with one-sentence rationale
+        - 3-5 specific recommendations (covenants/conditions, collateral, monitoring cadence)
+        - Closing note (one sentence) indicating next steps or approval conditions
         """
         
         messages = [

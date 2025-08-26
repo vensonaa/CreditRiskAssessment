@@ -15,13 +15,19 @@ class RefinerAgent(BaseAgent):
         self.data_service = DataService()
     
     def get_system_prompt(self) -> str:
-        return """You are a Refiner Agent specialized in improving credit risk assessment reports based on critique. Your responsibilities include:
+        return """You are a Refiner Agent specialized in improving credit risk assessment reports based on critique. Produce polished, executive-ready content. Your responsibilities include:
 
 1. Accepting critique from the Reflection agent
 2. Planning corrections based on feedback
 3. Using tools to retrieve missing data when needed
 4. Regenerating complete reports with improvements
 5. Ensuring all identified issues are addressed
+
+STYLE GUIDELINES
+- Remove boilerplate and repetition
+- Keep paragraphs short; prefer bullets where appropriate
+- Use specific, decision-useful statements with numbers when possible
+- Maintain a confident, professional tone
 
 When refining reports, focus on:
 - Addressing all critique points systematically
@@ -31,7 +37,7 @@ When refining reports, focus on:
 - Ensuring relevance to credit risk assessment
 - Maintaining professional tone throughout
 
-Be thorough in addressing feedback and ensure the refined report meets quality standards."""
+Be thorough in addressing feedback and ensure the refined report meets quality standards. Do not repeat section intros like "This section provides..."; go straight to substance."""
 
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -63,10 +69,15 @@ Be thorough in addressing feedback and ensure the refined report meets quality s
                 original_report, evaluation, correction_plan, additional_data, original_request
             )
             
+            refined_dict = refined_report.dict()
+            print(f"Refiner: Generated {len(refined_dict.get('sections', []))} sections")
+            if refined_dict.get('sections'):
+                print(f"Refiner: First section '{refined_dict['sections'][0].get('title')}' has {len(refined_dict['sections'][0].get('content', ''))} chars")
+            
             return {
                 "agent_type": "Refiner",
                 "status": "success",
-                "refined_report": refined_report.dict(),
+                "refined_report": refined_dict,
                 "correction_plan": correction_plan,
                 "content": f"Report refined successfully. Addressed {len(evaluation.get('critique', []))} critique points."
             }
@@ -92,27 +103,29 @@ Be thorough in addressing feedback and ensure the refined report meets quality s
         }
         
         # Plan based on individual scores
-        if evaluation.get("accuracy", 0.0) < 0.8:
+        from app.core.config import settings
+        threshold = settings.quality_threshold
+        if evaluation.get("accuracy", 0.0) < threshold:
             plan["accuracy_improvements"].append("Verify all factual information and ensure data consistency")
             plan["accuracy_improvements"].append("Cross-reference data across sections for consistency")
         
-        if evaluation.get("completeness", 0.0) < 0.8:
+        if evaluation.get("completeness", 0.0) < threshold:
             plan["completeness_improvements"].append("Add missing required sections")
             plan["completeness_improvements"].append("Expand analysis depth in existing sections")
         
-        if evaluation.get("structure", 0.0) < 0.8:
+        if evaluation.get("structure", 0.0) < threshold:
             plan["structure_improvements"].append("Reorganize sections for better logical flow")
             plan["structure_improvements"].append("Improve transitions between sections")
         
-        if evaluation.get("verbosity", 0.0) < 0.8:
+        if evaluation.get("verbosity", 0.0) < threshold:
             plan["verbosity_improvements"].append("Adjust detail level based on section importance")
             plan["verbosity_improvements"].append("Balance comprehensiveness with conciseness")
         
-        if evaluation.get("relevance", 0.0) < 0.8:
+        if evaluation.get("relevance", 0.0) < threshold:
             plan["relevance_improvements"].append("Focus analysis on credit risk factors")
             plan["relevance_improvements"].append("Remove irrelevant information")
         
-        if evaluation.get("tone", 0.0) < 0.8:
+        if evaluation.get("tone", 0.0) < threshold:
             plan["tone_improvements"].append("Ensure consistent professional tone throughout")
             plan["tone_improvements"].append("Maintain objectivity and impartiality")
         
@@ -127,7 +140,8 @@ Be thorough in addressing feedback and ensure the refined report meets quality s
         additional_data = {}
         
         # If completeness score is low, retrieve more data
-        if evaluation.get("completeness", 0.0) < 0.8:
+        from app.core.config import settings
+        if evaluation.get("completeness", 0.0) < settings.quality_threshold:
             try:
                 # Get additional market and industry data
                 if original_request:
@@ -247,24 +261,28 @@ Be thorough in addressing feedback and ensure the refined report meets quality s
         
         original_content = original_section.get("content", "") if original_section else ""
         
+        from app.core.config import settings
         prompt = f"""
-        Improve the '{section_title}' section of a credit risk assessment report.
-        
-        Original content:
+        CRITICAL: You are improving a credit risk assessment section that scored {evaluation.get('overall_score', 0.0):.3f} overall. 
+        The target quality threshold is {settings.quality_threshold}. You MUST significantly improve this content.
+
+        Section: '{section_title}'
+
+        Original content (score: {evaluation.get('overall_score', 0.0):.3f}):
         {original_content}
-        
+
         Quality evaluation scores:
-        - Accuracy: {evaluation.get('accuracy', 0.0)}
-- Completeness: {evaluation.get('completeness', 0.0)}
-- Structure: {evaluation.get('structure', 0.0)}
-- Verbosity: {evaluation.get('verbosity', 0.0)}
-- Relevance: {evaluation.get('relevance', 0.0)}
-- Tone: {evaluation.get('tone', 0.0)}
-- Overall: {evaluation.get('overall_score', 0.0)}
-        
-        Correction plan for this section:
+        - Accuracy: {evaluation.get('accuracy', 0.0):.3f}
+        - Completeness: {evaluation.get('completeness', 0.0):.3f}
+        - Structure: {evaluation.get('structure', 0.0):.3f}
+        - Verbosity: {evaluation.get('verbosity', 0.0):.3f}
+        - Relevance: {evaluation.get('relevance', 0.0):.3f}
+        - Tone: {evaluation.get('tone', 0.0):.3f}
+        - Overall: {evaluation.get('overall_score', 0.0):.3f}
+
+        Specific issues to fix:
         {self._get_section_specific_corrections(section_title, correction_plan)}
-        
+
         Customer information:
         - Name: {original_request.get('customer_name', 'N/A')}
         - Business Type: {original_request.get('business_type', 'N/A')}
@@ -272,20 +290,20 @@ Be thorough in addressing feedback and ensure the refined report meets quality s
         - Credit History: {original_request.get('credit_history_years', 0)} years
         - Requested Amount: ${original_request.get('requested_amount', 0):,.2f}
         - Purpose: {original_request.get('purpose', 'N/A')}
-        
+
         Additional data available:
         {json.dumps(additional_data, indent=2) if additional_data else 'None'}
-        
-        Generate an improved version of this section that addresses all identified issues.
-        Focus on:
-        1. Improving accuracy and factual correctness
-        2. Enhancing completeness and depth of analysis
-        3. Better structure and organization
-        4. Appropriate level of detail
-        5. Relevance to credit risk assessment
-        6. Professional and objective tone
-        
-        Provide a comprehensive, well-structured section that meets high-quality standards.
+
+        REQUIREMENTS:
+        1. Start with a clear, actionable one-sentence takeaway
+        2. Use specific numbers and concrete details from the customer data
+        3. Structure as short paragraphs or bullet points (max 5 items)
+        4. Remove ALL boilerplate and generic statements
+        5. Focus on credit risk factors and decision-useful information
+        6. Ensure professional, confident tone
+        7. Make this section significantly better than the original
+
+        Generate a completely rewritten, high-quality section that addresses all identified issues.
         """
         
         return prompt

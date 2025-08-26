@@ -11,13 +11,14 @@ class ReflectionAgent(BaseAgent):
         super().__init__("Reflection")
     
     def get_system_prompt(self) -> str:
-        return """You are a Reflection Agent (Critic) specialized in evaluating credit risk assessment reports. Your role is to:
+        from app.core.config import settings
+        return f"""You are a Reflection Agent (Critic) specialized in evaluating credit risk assessment reports. Your role is to:
 
 1. Review generated reports with strict evaluation criteria
 2. Apply comprehensive quality assessment across multiple dimensions
 3. Assign quality scores (0.0 to 1.0) for each evaluation criterion
 4. Provide actionable critique when quality scores are below threshold
-5. Automatically exit the refinement loop when quality score >= 0.8
+5. Automatically exit the refinement loop when quality score >= {settings.quality_threshold}
 
 Evaluation Criteria:
 - ACCURACY: Factual correctness, data precision, and logical consistency
@@ -80,14 +81,19 @@ Be thorough, objective, and provide specific, actionable feedback for improvemen
         tone_score = await self._evaluate_tone(report, sections)
         
         # Calculate overall score (weighted average)
-        overall_score = self._calculate_overall_score({
+        scores_dict = {
             "accuracy": accuracy_score,
             "completeness": completeness_score,
             "structure": structure_score,
             "verbosity": verbosity_score,
             "relevance": relevance_score,
             "tone": tone_score
-        })
+        }
+        overall_score = self._calculate_overall_score(scores_dict)
+        
+        # Debug logging
+        print(f"Reflection scores: {scores_dict}")
+        print(f"Overall score: {overall_score}")
         
         # Generate critique if score is below threshold
         critique = []
@@ -115,12 +121,21 @@ Be thorough, objective, and provide specific, actionable feedback for improvemen
 
     async def _evaluate_accuracy(self, report: Dict[str, Any], sections: List[Dict[str, Any]]) -> float:
         """Evaluate factual accuracy and data precision"""
+        # Include actual content for evaluation
+        content_preview = "\n\n".join([
+            f"Section: {section.get('title', 'Unknown')}\n{section.get('content', '')[:500]}..."
+            for section in sections[:3]  # Show first 3 sections
+        ])
+        
         prompt = f"""
         Evaluate the ACCURACY of this credit risk assessment report.
         
         Report ID: {report.get('report_id')}
         Customer ID: {report.get('customer_id')}
         Number of sections: {len(sections)}
+        
+        ACTUAL CONTENT (first 3 sections):
+        {content_preview}
         
         Consider:
         1. Factual correctness of information
@@ -153,12 +168,21 @@ Be thorough, objective, and provide specific, actionable feedback for improvemen
         present_sections = [section.get("title", "") for section in sections]
         missing_sections = [section for section in required_sections if section not in present_sections]
         
+        # Include actual content for evaluation
+        content_preview = "\n\n".join([
+            f"Section: {section.get('title', 'Unknown')}\n{section.get('content', '')[:300]}..."
+            for section in sections
+        ])
+        
         prompt = f"""
         Evaluate the COMPLETENESS of this credit risk assessment report.
         
         Required sections: {required_sections}
         Present sections: {present_sections}
         Missing sections: {missing_sections}
+        
+        ACTUAL CONTENT:
+        {content_preview}
         
         Consider:
         1. Coverage of all required assessment areas
@@ -306,24 +330,26 @@ Be thorough, objective, and provide specific, actionable feedback for improvemen
 
     async def _generate_critique(self, scores: Dict[str, float], sections: List[Dict[str, Any]]) -> List[str]:
         """Generate actionable critique for improvement"""
+        from app.core.config import settings
+        threshold = settings.quality_threshold
         critique = []
         
-        if scores["accuracy"] < 0.8:
+        if scores["accuracy"] < threshold:
             critique.append("Improve factual accuracy and ensure data consistency across all sections")
         
-        if scores["completeness"] < 0.8:
+        if scores["completeness"] < threshold:
             critique.append("Add missing sections and provide more comprehensive analysis")
         
-        if scores["structure"] < 0.8:
+        if scores["structure"] < threshold:
             critique.append("Improve logical flow and organization of report sections")
         
-        if scores["verbosity"] < 0.8:
+        if scores["verbosity"] < threshold:
             critique.append("Adjust detail level - provide more comprehensive analysis where needed")
         
-        if scores["relevance"] < 0.8:
+        if scores["relevance"] < threshold:
             critique.append("Focus more on credit risk factors and business-relevant analysis")
         
-        if scores["tone"] < 0.8:
+        if scores["tone"] < threshold:
             critique.append("Maintain professional tone and ensure objectivity throughout")
         
         # Add specific section-based critique

@@ -442,22 +442,48 @@ export default function WorkflowStatus() {
                     <div className="space-y-4">
                       <h4 className="text-md font-semibold text-gray-900">Assessment Details</h4>
                       {creditReport.sections.map((section, index) => (
-                        <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div
+                          key={index}
+                          className={`border border-gray-200 rounded-lg p-4 bg-gradient-to-br from-white to-gray-50 border-l-4 ${[
+                            'border-blue-500 bg-blue-50',
+                            'border-green-500 bg-green-50',
+                            'border-purple-500 bg-purple-50',
+                            'border-amber-500 bg-amber-50',
+                            'border-pink-500 bg-pink-50',
+                          ][index % 5]}`}
+                        >
                           <div className="flex items-center justify-between mb-3">
                             <h5 className="text-sm font-semibold text-gray-900">{section.title}</h5>
                             {section.score && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  section.score * 100 >= 80
+                                    ? 'bg-green-50 text-green-700'
+                                    : section.score * 100 >= 60
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-red-50 text-red-700'
+                                }`}
+                              >
                                 Score {(section.score * 100).toFixed(0)}%
                               </span>
                             )}
                           </div>
-                          <div className="text-sm text-gray-700 space-y-2">
+                          <div className="text-sm text-gray-800 space-y-2">
                             {String(section.content)
                               .split(/\n\n+/)
                               .map((para, i) => (
                                 <p key={i}>{para}</p>
                               ))}
                           </div>
+                          {/* Technical details toggle per section */}
+                          <details className="mt-3">
+                            <summary className="text-xs text-gray-600 cursor-pointer select-none hover:text-gray-800">
+                              Show technical details
+                            </summary>
+                            <pre className="text-xs text-gray-700 mt-2 bg-white/70 backdrop-blur rounded border border-gray-200 p-2 overflow-auto">
+{JSON.stringify(section, null, 2)}
+                            </pre>
+                          </details>
                         </div>
                       ))}
                     </div>
