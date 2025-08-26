@@ -86,6 +86,7 @@ class DataService:
         """Save credit risk report to database"""
         session = self.get_session()
         try:
+            logger.debug(f"Saving credit risk report with id={report_data.get('report_id')}")
             report = CreditRiskReport(
                 id=report_data["report_id"],
                 customer_id=report_data["customer_id"],
@@ -100,6 +101,7 @@ class DataService:
             
             session.add(report)
             session.commit()
+            logger.info(f"Saved credit risk report id={report.id}")
             return report.id
             
         except Exception as e:
@@ -137,8 +139,14 @@ class DataService:
         """Retrieve credit risk report by ID"""
         session = self.get_session()
         try:
+            logger.debug(f"Fetching credit risk report id={report_id}")
             report = session.query(CreditRiskReport).filter(CreditRiskReport.id == report_id).first()
-            return json.loads(report.report_data) if report else None
+            if not report:
+                logger.debug(f"Report not found for id={report_id}")
+                return None
+            data = json.loads(report.report_data) if report.report_data else None
+            logger.debug(f"Found report id={report_id}, has_data={bool(data)}")
+            return data
         finally:
             session.close()
     

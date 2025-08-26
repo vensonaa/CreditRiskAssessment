@@ -23,20 +23,13 @@ async def create_credit_risk_assessment(request: CreditRiskRequest):
         response_data = await workflow.execute(request.model_dump())
         
         # The workflow now returns a dictionary, so we don't need to convert it
-        # Save workflow execution
-        await data_service.save_workflow_execution({
-            "request_id": response_data["request_id"],
-            "status": response_data["status"],
-            "iterations": response_data["iterations"],
-            "total_duration": response_data["total_duration"],
-            "agent_responses": response_data["agent_responses"],
-            "final_report_id": response_data["request_id"] if response_data.get("final_report") else None
-        })
-        
-        # Save final report if it exists
+        # IMPORTANT: Save report first (if it exists), then workflow execution to avoid race conditions
+        report_id = None
         if response_data.get("final_report"):
+            # Use the report's own ID, not the request_id
+            report_id = response_data["final_report"].get("report_id") or response_data["request_id"]
             await data_service.save_credit_risk_report({
-                "report_id": response_data["request_id"],
+                "report_id": report_id,
                 "customer_id": request.customer_id,
                 "customer_name": request.customer_name,
                 "business_type": request.business_type,
@@ -45,6 +38,16 @@ async def create_credit_risk_assessment(request: CreditRiskRequest):
                 "purpose": request.purpose,
                 **response_data["final_report"]
             })
+        
+        # Save workflow execution AFTER report is persisted (so final_report_id implies report exists)
+        await data_service.save_workflow_execution({
+            "request_id": response_data["request_id"],
+            "status": response_data["status"],
+            "iterations": response_data["iterations"],
+            "total_duration": response_data["total_duration"],
+            "agent_responses": response_data["agent_responses"],
+            "final_report_id": report_id if response_data.get("final_report") else None
+        })
         
         return response_data
         

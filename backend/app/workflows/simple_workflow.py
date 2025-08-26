@@ -41,6 +41,10 @@ class SimpleReflectionWorkflow:
         start_time = datetime.now()
         request_id = str(uuid.uuid4())
         agent_responses = []
+        # Align thresholds with configuration
+        quality_threshold = settings.quality_threshold
+        # A softer threshold for early stopping if score is stable but slightly below target
+        stable_threshold = max(0.0, quality_threshold - 0.2)
         
         try:
             # Step 1: Generator Agent
@@ -169,7 +173,7 @@ class SimpleReflectionWorkflow:
                 print(f"Iteration {iteration} - Quality Score: {quality_score}")
                 
                 # Check if quality is acceptable
-                if quality_score >= 0.8:
+                if quality_score >= quality_threshold:
                     # Ensure final_report is a dictionary
                     final_report = current_report
                     if hasattr(final_report, 'model_dump'):
@@ -189,7 +193,7 @@ class SimpleReflectionWorkflow:
                     return self._serialize_workflow_response(response)
                 
                 # Exit if we've reached max iterations or if score is stable and reasonable
-                if iteration >= max_iterations or (iteration >= 3 and quality_score >= 0.6):
+                if iteration >= max_iterations or (iteration >= 3 and quality_score >= stable_threshold):
                     print(f"Workflow completed: {'Max iterations reached' if iteration >= max_iterations else 'Quality score stable and acceptable'}")
                     final_report = current_report
                     if hasattr(final_report, 'model_dump'):
@@ -200,7 +204,7 @@ class SimpleReflectionWorkflow:
                     
                     response = WorkflowResponse(
                         request_id=request_id,
-                        status="completed" if quality_score >= 0.6 else "max_iterations_reached",
+                        status="completed" if quality_score >= stable_threshold else "max_iterations_reached",
                         final_report=final_report,
                         iterations=iteration,
                         total_duration=(datetime.now() - start_time).total_seconds(),

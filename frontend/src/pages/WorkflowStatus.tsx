@@ -85,11 +85,14 @@ export default function WorkflowStatus() {
     staleTime: 0, // Always consider data stale
   })
 
-  // Fetch the actual credit risk report when workflow is completed
+  // Decide which report id to fetch: prefer final_report_id; fallback to request_id when completed
+  const reportIdToFetch = workflow?.final_report_id || (workflow?.status === 'completed' ? workflow?.request_id : undefined)
+
+  // Fetch the actual credit risk report as soon as we have a report id
   const { data: creditReport, isLoading: reportLoading, error: reportError } = useQuery({
-    queryKey: ['credit-report', workflow?.final_report_id],
-    queryFn: () => creditRiskAPI.getReport(workflow!.final_report_id!),
-    enabled: !!workflow?.final_report_id && workflow.status === 'completed',
+    queryKey: ['credit-report', reportIdToFetch],
+    queryFn: () => creditRiskAPI.getReport(reportIdToFetch!),
+    enabled: !!reportIdToFetch,
   })
 
   // Debug logging for credit report query
@@ -98,7 +101,8 @@ export default function WorkflowStatus() {
       console.log('Credit report query debug:', {
         workflowStatus: workflow.status,
         finalReportId: workflow.final_report_id,
-        queryEnabled: !!workflow?.final_report_id && workflow.status === 'completed',
+        reportIdToFetch: reportIdToFetch,
+        queryEnabled: !!reportIdToFetch,
         creditReport: creditReport,
         reportLoading: reportLoading,
         reportError: reportError
@@ -340,35 +344,11 @@ export default function WorkflowStatus() {
             </div>
           )}
           
-          {/* Debug section - always show */}
-          <div className="mt-4 pt-4 border-t border-gray-200 bg-gray-50 p-3 rounded">
-            <h3 className="text-sm font-medium text-gray-900 mb-2">Debug Info</h3>
-            <div className="text-xs text-gray-600 space-y-1">
-              <p>Status: {workflow.status}</p>
-              <p>Final Report ID: {workflow.final_report_id || 'None'}</p>
-              <p>Should Show Delete: {workflow.status === 'completed' && workflow.final_report_id ? 'Yes' : 'No'}</p>
-              <p>Delete Mutation Pending: {deleteReportMutation.isPending ? 'Yes' : 'No'}</p>
-            </div>
-          </div>
+          {/* Debug info removed for cleaner UI */}
         </div>
       </div>
 
-      {/* Debug Section - Remove this in production */}
-      <div className="card">
-        <div className="card-header">
-          <h2 className="text-lg font-semibold text-gray-900">Debug Information</h2>
-        </div>
-        <div className="card-content">
-          <div className="text-sm text-gray-600 space-y-1">
-            <div>Workflow Status: <span className="font-mono">{workflow.status}</span></div>
-            <div>Final Report ID: <span className="font-mono">{workflow.final_report_id || 'None'}</span></div>
-            <div>Credit Report Loading: <span className="font-mono">{reportLoading ? 'Yes' : 'No'}</span></div>
-            <div>Credit Report Error: <span className="font-mono">{reportError ? 'Yes' : 'No'}</span></div>
-            <div>Credit Report Data: <span className="font-mono">{creditReport ? 'Available' : 'None'}</span></div>
-            <div>Should Show Summary: <span className="font-mono">{workflow.status === 'completed' && creditReport ? 'Yes' : 'No'}</span></div>
-          </div>
-        </div>
-      </div>
+      {/* Debug Information card removed */}
 
       {/* Final Credit Risk Assessment - Always Displayed When Available */}
       {workflow.final_report_id && (
@@ -463,16 +443,20 @@ export default function WorkflowStatus() {
                       <h4 className="text-md font-semibold text-gray-900">Assessment Details</h4>
                       {creditReport.sections.map((section, index) => (
                         <div key={index} className="border border-gray-200 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center justify-between mb-3">
                             <h5 className="text-sm font-semibold text-gray-900">{section.title}</h5>
                             {section.score && (
-                              <span className="text-xs font-medium text-gray-500">
-                                Score: {(section.score * 100).toFixed(1)}%
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                Score {(section.score * 100).toFixed(0)}%
                               </span>
                             )}
                           </div>
-                          <div className="text-sm text-gray-700 whitespace-pre-wrap">
-                            {section.content}
+                          <div className="text-sm text-gray-700 space-y-2">
+                            {String(section.content)
+                              .split(/\n\n+/)
+                              .map((para, i) => (
+                                <p key={i}>{para}</p>
+                              ))}
                           </div>
                         </div>
                       ))}
@@ -601,19 +585,46 @@ export default function WorkflowStatus() {
                   {(selectedAgent === response.agent_type || selectedAgent === 'all') && (
                     <div className="mt-4 space-y-3">
                       <div>
-                        <p className="text-sm font-medium text-gray-700">Response:</p>
-                        <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">
+                        <p className="text-sm font-medium text-gray-700">Summary</p>
+                        <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
                           {response.content}
                         </p>
                       </div>
-                      
+
+                      {/* Friendly details for Reflection evaluation */}
+                      {response.agent_type?.toLowerCase() === 'reflection' && response.metadata?.evaluation && (
+                        <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Quality Evaluation</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div className="text-xs text-gray-700"><span className="font-medium">Overall:</span> {response.metadata.evaluation.overall_score?.toFixed?.(2) ?? response.metadata.evaluation.overall_score}</div>
+                            <div className="text-xs text-gray-700"><span className="font-medium">Accuracy:</span> {response.metadata.evaluation.accuracy}</div>
+                            <div className="text-xs text-gray-700"><span className="font-medium">Completeness:</span> {response.metadata.evaluation.completeness}</div>
+                            <div className="text-xs text-gray-700"><span className="font-medium">Structure:</span> {response.metadata.evaluation.structure}</div>
+                            <div className="text-xs text-gray-700"><span className="font-medium">Verbosity:</span> {response.metadata.evaluation.verbosity}</div>
+                            <div className="text-xs text-gray-700"><span className="font-medium">Relevance:</span> {response.metadata.evaluation.relevance}</div>
+                            <div className="text-xs text-gray-700"><span className="font-medium">Tone:</span> {response.metadata.evaluation.tone}</div>
+                          </div>
+                          {Array.isArray(response.metadata.evaluation.critique) && response.metadata.evaluation.critique.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-xs font-medium text-gray-700">Improvement suggestions</p>
+                              <ul className="mt-1 list-disc list-inside space-y-1">
+                                {response.metadata.evaluation.critique.map((item: string, idx: number) => (
+                                  <li key={idx} className="text-xs text-gray-700">{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Minimal metadata toggle for advanced users */}
                       {response.metadata && Object.keys(response.metadata).length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Metadata:</p>
+                        <details className="mt-1">
+                          <summary className="text-xs text-gray-500 cursor-pointer select-none">Show technical details</summary>
                           <pre className="text-xs text-gray-600 mt-1 bg-gray-50 p-2 rounded overflow-auto">
                             {JSON.stringify(response.metadata, null, 2)}
                           </pre>
-                        </div>
+                        </details>
                       )}
                     </div>
                   )}
